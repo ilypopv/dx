@@ -6,7 +6,7 @@ View **PDF and Word documents** in VS Code. Light on size, and it keeps your doc
 
 ## Features
 
-- Opens `.pdf`, `.docx` and `.doc` as pages, in an extension of about 1 MB.
+- Opens `.pdf`, `.docx` and `.doc` as pages, in an extension of under 3 MB.
 - PDF: select and copy text, follow links, fill in forms, rotate pages.
 - Annotate PDFs (highlight, text, drawing); annotations are saved into the file.
 - Edit the text of `.docx` documents; only the edited text changes, styles, images and tables are preserved.
@@ -16,7 +16,6 @@ View **PDF and Word documents** in VS Code. Light on size, and it keeps your doc
 ## Install
 
 Search for **dx** in the Extensions view, or run `ext install ilypopv.dx`.
-To install a local build, run `code --install-extension dx.vsix`, or choose **Install from VSIX...** in the `...` menu of the Extensions view.
 
 ## Use
 
@@ -43,19 +42,19 @@ To install a local build, run `code --install-extension dx.vsix`, or choose **In
 
 ### Configuring VS Code
 
-dx is the default editor for its files. You can choose a different editor for any of them by setting `workbench.editorAssociations` in `settings.json`:
+You can make dx the default editor for your document files by setting `workbench.editorAssociations` in `settings.json`:
 
 ```json
 {
     "workbench.editorAssociations": {
-        "*.pdf": "dx.pdf",
-        "*.docx": "dx.docx",
-        "*.doc": "dx.doc"
+        "*.pdf": "dx-pdf-editor",
+        "*.docx": "dx-docx-editor",
+        "*.doc": "dx-doc-editor"
     }
 }
 ```
 
-To open a file in another editor once, right-click it and choose **Open With...**.
+Without it, these files already open in dx; the setting matters when another extension also claims them. To go back to the built-in editor for a type, set its value to `"default"`. To switch for a single file, use **Open With...**.
 
 ### Configuring dx
 
