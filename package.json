@@ -33,9 +33,9 @@
     "vscode"
   ],
   "activationEvents": [
-    "onCustomEditor:dx.pdf",
-    "onCustomEditor:dx.docx",
-    "onCustomEditor:dx.doc"
+    "onCustomEditor:dx-pdf-editor",
+    "onCustomEditor:dx-docx-editor",
+    "onCustomEditor:dx-doc-editor"
   ],
   "main": "./dist/extension",
   "browser": "./dist/extension",
@@ -48,7 +48,7 @@
   "contributes": {
     "customEditors": [
       {
-        "viewType": "dx.pdf",
+        "viewType": "dx-pdf-editor",
         "displayName": "dx PDF Viewer",
         "priority": "default",
         "selector": [
@@ -58,7 +58,7 @@
         ]
       },
       {
-        "viewType": "dx.docx",
+        "viewType": "dx-docx-editor",
         "displayName": "dx Word Viewer",
         "priority": "default",
         "selector": [
@@ -68,7 +68,7 @@
         ]
       },
       {
-        "viewType": "dx.doc",
+        "viewType": "dx-doc-editor",
         "displayName": "dx Word 97-2003 Viewer",
         "priority": "default",
         "selector": [
