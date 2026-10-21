@@ -44,7 +44,7 @@ const cases = [
     [
         'PDF renders all pages with a text layer',
         async () => {
-            await open('sample.pdf', 'dx.pdf');
+            await open('sample.pdf', 'dx-pdf-editor');
             const s = await statusOf('sample.pdf', s => s.text || s.error);
             assert.equal(s.error, undefined, s.error);
             assert.equal(s.pages, 3);
@@ -69,7 +69,7 @@ const cases = [
     [
         'a damaged PDF shows an error instead of a blank page',
         async () => {
-            await open('broken.pdf', 'dx.pdf');
+            await open('broken.pdf', 'dx-pdf-editor');
             const s = await statusOf('broken.pdf', s => s.error);
             assert.match(s.error, /could not open|damaged|not a PDF/i);
         }
@@ -77,7 +77,7 @@ const cases = [
     [
         'DOCX renders pages and words',
         async () => {
-            await open('sample.docx', 'dx.docx');
+            await open('sample.docx', 'dx-docx-editor');
             const s = await statusOf('sample.docx', s => s.kind || s.error);
             assert.equal(s.error, undefined, s.error);
             assert.equal(s.kind, 'docx');
@@ -104,7 +104,7 @@ const cases = [
     [
         'DOC renders read-only',
         async () => {
-            await open('sample.doc', 'dx.doc');
+            await open('sample.doc', 'dx-doc-editor');
             const s = await statusOf('sample.doc', s => s.kind || s.error);
             assert.equal(s.error, undefined, s.error);
             assert.equal(s.kind, 'doc');
