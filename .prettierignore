@@ -1,8 +1,9 @@
 dist
 node_modules
 out
-media/pdfjs
 media/vendor
-package-lock.json
-prompt.txt
+media/pdfjs
+docs
 *.vsix
+package-lock.json
+CLAUDE.md
