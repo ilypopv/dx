@@ -2,7 +2,7 @@
   "name": "dx",
   "displayName": "dx",
   "description": "View PDF, DOCX and DOC files in VS Code; annotate PDFs and edit the text of DOCX documents.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "ilypopv",
   "icon": "img/icon.png",
   "author": {
