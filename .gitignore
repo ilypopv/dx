@@ -4,5 +4,5 @@ out
 media/pdfjs
 .DS_Store
 *.vsix
-.vscode-test
+team-extension.log
 .vscode-test-web
