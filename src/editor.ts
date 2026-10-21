@@ -212,9 +212,9 @@ export class DxDocument extends Disposable implements vscode.CustomDocument {
 }
 
 const VIEW_TYPES: { [kind in Kind]: string } = {
-    pdf: 'dx.pdf',
-    docx: 'dx.docx',
-    doc: 'dx.doc'
+    pdf: 'dx-pdf-editor',
+    docx: 'dx-docx-editor',
+    doc: 'dx-doc-editor'
 };
 
 export class DxEditorProvider implements vscode.CustomEditorProvider<DxDocument> {
