@@ -4,6 +4,8 @@ View **PDF and Word documents** in VS Code. Light on size, and it keeps your doc
 
 [![Install from the VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Install%20from%20Marketplace-1f9d6b?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=ilypopv.dx)
 
+<img src="docs/images/docx.png" alt="Excel Editor" width="49%"> <img src="docs/images/pdf.png" alt="CSV Editor" width="49%">
+
 ## Features
 
 - Opens `.pdf`, `.docx` and `.doc` as pages, in an extension of under 3 MB.
