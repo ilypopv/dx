@@ -1,0 +1,8 @@
+node_modules
+dist
+out
+media/pdfjs
+.DS_Store
+*.vsix
+.vscode-test
+.vscode-test-web

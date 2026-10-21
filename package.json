@@ -1,0 +1,117 @@
+{
+  "name": "dx",
+  "displayName": "dx",
+  "description": "View PDF, DOCX and DOC files in VS Code; annotate PDFs and edit the text of DOCX documents.",
+  "version": "0.1.0",
+  "publisher": "ilypopv",
+  "icon": "img/icon.png",
+  "author": {
+    "name": "Ilya Popov",
+    "url": "https://github.com/ilypopv"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ilypopv/dx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ilypopv/dx/issues"
+  },
+  "homepage": "https://github.com/ilypopv/dx#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "PDF",
+    "DOCX",
+    "DOC",
+    "Word",
+    "viewer",
+    "vscode"
+  ],
+  "activationEvents": [
+    "onCustomEditor:dx.pdf",
+    "onCustomEditor:dx.docx",
+    "onCustomEditor:dx.doc"
+  ],
+  "main": "./dist/extension",
+  "browser": "./dist/extension",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "dx.pdf",
+        "displayName": "dx PDF Viewer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ]
+      },
+      {
+        "viewType": "dx.docx",
+        "displayName": "dx Word Viewer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.docx"
+          }
+        ]
+      },
+      {
+        "viewType": "dx.doc",
+        "displayName": "dx Word 97-2003 Viewer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.doc"
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run vendor && webpack --mode production",
+    "compile": "npm run vendor && webpack --mode none",
+    "watch": "webpack --mode none --watch",
+    "vendor": "node scripts/vendor.js",
+    "package": "vsce package --no-dependencies -o dx.vsix",
+    "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "test:e2e": "npm run compile && node test/e2e/run.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.90.0",
+    "@types/webpack-env": "^1.18.8",
+    "@vscode/vsce": "^3.0.0",
+    "assert": "^2.1.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "process": "^0.11.10",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
+    "webpack": "^5.52.1",
+    "webpack-cli": "^4.8.0"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "path-browserify": "^1.0.1",
+    "vscode-uri": "^3.0.2"
+  }
+}

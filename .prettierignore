@@ -1,0 +1,8 @@
+dist
+node_modules
+out
+media/pdfjs
+media/vendor
+package-lock.json
+prompt.txt
+*.vsix

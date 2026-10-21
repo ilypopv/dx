@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="dx">
+  <!-- Same system as icon-xl.svg: flat plum tile, bold round-capped strokes. d = ring + stem, x = two crossing bars -->
+  <rect width="256" height="256" rx="56" fill="#261230"/>
+  <rect x="1" y="1" width="254" height="254" rx="55" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
+
+  <g fill="none" stroke-width="24" stroke-linecap="round">
+    <!-- d -->
+    <circle cx="84" cy="143" r="26" stroke="#8B6CFF"/>
+    <path d="M110 87v82" stroke="#8B6CFF"/>
+    <!-- x: back bar, then front bar on top -->
+    <path d="M198 117 146 169" stroke="#B79CFF"/>
+    <path d="M146 117 198 169" stroke="#D7FF64"/>
+  </g>
+</svg>
