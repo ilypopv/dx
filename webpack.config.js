@@ -1,7 +1,38 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const webpack = require('webpack');
+
+const STYLES = [path.resolve(__dirname, 'media/styles/vscode.css')];
+
+function minifyCss(css) {
+    return css
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*([{};:,>])\s*/g, '$1')
+        .replace(/;}/g, '}')
+        .trim();
+}
+
+// Emits the minified stylesheet next to the webview bundles (one request instead of several).
+class StylePlugin {
+    apply(compiler) {
+        const { RawSource } = compiler.webpack.sources;
+        compiler.hooks.thisCompilation.tap('StylePlugin', compilation => {
+            compilation.hooks.processAssets.tap(
+                { name: 'StylePlugin', stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL },
+                () => {
+                    for (const file of STYLES) {
+                        compilation.fileDependencies.add(file);
+                    }
+                    const css = STYLES.map(f => minifyCss(fs.readFileSync(f, 'utf8'))).join('\n');
+                    compilation.emitAsset('style.css', new RawSource(css));
+                }
+            );
+        });
+    }
+}
 
 const tsRule = {
     test: /\.ts$/,
@@ -27,7 +58,8 @@ module.exports = (env, argv) => {
             path: path.resolve(__dirname, 'dist'),
             filename: 'extension.js',
             libraryTarget: 'commonjs2',
-            clean: true,
+            // dist/webview belongs to the webview build
+            clean: { keep: /^webview\// },
             devtoolModuleFilenameTemplate: '../[resource-path]'
         },
         externals: {
@@ -44,9 +76,9 @@ module.exports = (env, argv) => {
         plugins: [new webpack.ProvidePlugin({ process: require.resolve('process/browser.js') })]
     };
 
-    // The webview bundles are classic scripts. pdf.js and its worker are baked into out/pdf.js:
+    // The webview bundles are classic scripts. pdf.js and its worker are baked into dist/webview/pdf.js:
     // the worker source is inlined as a string and becomes a same-origin blob worker at runtime.
-    // out/word.js carries the .docx and .doc readers and fflate.
+    // dist/webview/word.js carries the .docx and .doc readers and fflate.
     const webviewConfig = {
         ...base,
         target: 'web',
@@ -55,12 +87,13 @@ module.exports = (env, argv) => {
             word: './src/webview/word.ts'
         },
         output: {
-            path: path.resolve(__dirname, 'out'),
+            path: path.resolve(__dirname, 'dist/webview'),
             filename: '[name].js',
             iife: true,
             clean: true,
-            devtoolModuleFilenameTemplate: '../[resource-path]'
+            devtoolModuleFilenameTemplate: '../../[resource-path]'
         },
+        plugins: [new StylePlugin()],
         resolve: {
             mainFields: ['browser', 'module', 'main'],
             extensions: ['.ts', '.js', '.mjs'],
