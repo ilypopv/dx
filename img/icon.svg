@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="dx">
-  <!-- Same system as icon-xl.svg: flat plum tile, bold round-capped strokes. d = ring + stem, x = two crossing bars -->
+  <!-- Flat, geometric monogram on a dark plum tile: d = ring + stem, x = two crossing bars -->
   <rect width="256" height="256" rx="56" fill="#261230"/>
   <rect x="1" y="1" width="254" height="254" rx="55" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
 

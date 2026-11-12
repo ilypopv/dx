@@ -8,6 +8,8 @@ import type { DxDocument, Kind } from './editor';
 const DATA_TIMEOUT_MS = 60000;
 const MAX_STATE_CHARS = 1024 * 1024;
 const MAX_FILE_BYTES = 1024 * 1024 * 1024;
+// Bundles and the stylesheet produced by webpack
+const WEBVIEW_DIR = 'dist/webview';
 
 function isSaneState(state: any): boolean {
     if (state === null) {
@@ -62,6 +64,7 @@ export default class DocumentView {
     private readonly _extensionUri: URI;
     private readonly _disposables: Disposable[] = [];
     private readonly _pending = new Map<number, { resolve: (b: Uint8Array) => void; reject: (e: Error) => void }>();
+    private readonly _direct: boolean;
     private _requestId = 0;
     private _disposed = false;
 
@@ -75,10 +78,13 @@ export default class DocumentView {
         this._extensionUri = context.extensionUri;
         this._test = context.extensionMode === ExtensionMode.Test;
         DocumentView.all.add(this);
-        panel.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [Utils.joinPath(this._extensionUri, 'out'), Utils.joinPath(this._extensionUri, 'media')]
-        };
+        // A clean, non-restored local file is fetched by the webview straight from disk (no host round trip).
+        this._direct = _document.uri.scheme === 'file' && !_document.restored && !_document.dirty;
+        const roots = [Utils.joinPath(this._extensionUri, WEBVIEW_DIR), Utils.joinPath(this._extensionUri, 'media')];
+        if (this._direct) {
+            roots.push(Utils.dirname(_document.uri));
+        }
+        panel.webview.options = { enableScripts: true, localResourceRoots: roots };
         panel.onDidDispose(() => this.dispose(), this, this._disposables);
         panel.webview.onDidReceiveMessage(e => this.onMessage(e), this, this._disposables);
         panel.webview.html = this.getHtml();
@@ -134,13 +140,29 @@ export default class DocumentView {
 
     // The custom editor shows the document model: that is what restores hot-exit backups and reverts.
     public refresh(): void {
-        if (!this._disposed) {
-            this._panel.webview.postMessage({
-                refresh: true,
-                content: this._document.documentData,
-                editable: this._document.editable
-            });
-        }
+        const doc = this._document;
+        doc.ready.then(
+            () => {
+                if (!this._disposed) {
+                    this._panel.webview.postMessage({
+                        refresh: true,
+                        content: doc.documentData,
+                        editable: doc.editable
+                    });
+                }
+            },
+            reason => {
+                const detail = String((reason && reason.message) || reason);
+                const error = `Could not open '${Utils.basename(doc.uri)}': ${detail}`;
+                this.status = { error };
+                if (!this._disposed) {
+                    this._panel.webview.postMessage({ failed: detail });
+                }
+                if (!this._test) {
+                    window.showErrorMessage(error);
+                }
+            }
+        );
     }
 
     public postTest(action: string) {
@@ -210,7 +232,7 @@ export default class DocumentView {
 
     private getHtml(): string {
         const webview = this._panel.webview;
-        const out = webview.asWebviewUri(Utils.joinPath(this._extensionUri, 'out'));
+        const out = webview.asWebviewUri(Utils.joinPath(this._extensionUri, WEBVIEW_DIR));
         const media = webview.asWebviewUri(Utils.joinPath(this._extensionUri, 'media'));
         const kind = this._document.kind;
         const nonce = makeNonce();
@@ -219,6 +241,8 @@ export default class DocumentView {
             name: Utils.basename(this._document.uri),
             uri: this._document.uri.toString(),
             media: media.toString(),
+            editable: this._document.editable,
+            directUrl: this._direct ? webview.asWebviewUri(this._document.uri).toString() : undefined,
             state: this._test ? null : this._storage.get(this.stateKey, null),
             test: this._test
         };
@@ -231,7 +255,7 @@ export default class DocumentView {
     <meta http-equiv="Content-Security-Policy" content="${csp(webview.cspSource, nonce)}">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     ${pdfCss}
-    <link href="${media}/styles/vscode.css" rel="stylesheet" type="text/css" />
+    <link href="${out}/style.css" rel="stylesheet" type="text/css" />
 </head>
 <body>
     <div id="app"></div>

@@ -16,14 +16,19 @@ import {
     ICONS,
     errorText,
     toBytes,
+    fetchDirect,
     interceptLinks,
     FindQuery
 } from './shell';
 
+const t0 = performance.now();
 const options = readOptions();
 const shell = new Shell(document.getElementById('app')!);
 const viewState = new ViewState(options, '1');
 const PX_PER_PT = 4 / 3;
+// A document with more blocks than this is rendered in slices: the first pages show at once, the rest follows.
+const CHUNK_MIN_BLOCKS = 300;
+const SLICE_MS = 12;
 
 const scroller = h('div', 'dx-scroll');
 scroller.tabIndex = 0;
@@ -43,6 +48,11 @@ let editing = false;
 let changeReported = false;
 const dirty = new Set<number>();
 let saved = viewState.load();
+// The document is still being rendered in slices; positions measured now would be wrong.
+let loading = false;
+let renderToken = 0;
+let renderer: Renderer | undefined;
+let interacted = false;
 
 // ---------- toolbar ----------
 
@@ -106,10 +116,17 @@ new ResizeObserver(() => {
 }).observe(scroller);
 
 function saveState() {
+    if (loading) {
+        return;
+    }
     viewState.save({
         zoom: fitWidth ? 'fit' : zoom,
         scroll: scroller.scrollTop / Math.max(1, scroller.scrollHeight)
     });
+}
+
+for (const type of ['wheel', 'keydown', 'pointerdown']) {
+    scroller.addEventListener(type, () => (interacted = true), { passive: true });
 }
 
 let pageFrame = 0;
@@ -158,7 +175,7 @@ function search(q: FindQuery) {
     const flags = 'gu' + (q.caseSensitive ? '' : 'i');
     const body = escapeRegExp(q.query);
     const re = new RegExp(q.entireWord ? `(?<![\\p{L}\\p{N}_])${body}(?![\\p{L}\\p{N}_])` : body, flags);
-    for (const p of Array.from(pagesEl.querySelectorAll('.dx-p'))) {
+    for (const p of Array.from(pagesEl.querySelectorAll('.dx-body .dx-p'))) {
         const nodes: Text[] = [];
         const starts: number[] = [];
         let text = '';
@@ -369,7 +386,11 @@ function segments(p: HTMLElement) {
                     continue;
                 }
                 const slot = el.dataset.s;
-                if (slot !== undefined && !seen.has(+slot)) {
+                const last = out[out.length - 1];
+                if (slot !== undefined && last && last.slot === +slot) {
+                    // A piece that a line or a page break cut in two.
+                    last.text += el.textContent || '';
+                } else if (slot !== undefined && !seen.has(+slot)) {
                     seen.add(+slot);
                     out.push({ slot: +slot, text: el.textContent || '' });
                 } else if (el.tagName !== 'BR') {
@@ -382,6 +403,20 @@ function segments(p: HTMLElement) {
     return out;
 }
 
+// A piece of text that a page break went through is in two parts; it is one piece of the document.
+function joinSlots(list: { slot?: number; text: string }[]) {
+    const out: { slot?: number; text: string }[] = [];
+    for (const segment of list) {
+        const prev = out[out.length - 1];
+        if (prev && segment.slot !== undefined && prev.slot === segment.slot) {
+            prev.text += segment.text;
+        } else {
+            out.push({ ...segment });
+        }
+    }
+    return out;
+}
+
 function getData(requestId: number) {
     try {
         if (!docx) {
@@ -389,9 +424,10 @@ function getData(requestId: number) {
         }
         const edits = [];
         for (const id of dirty) {
-            const p = pagesEl.querySelector(`.dx-p[data-p="${id}"]`) as HTMLElement | null;
-            if (p) {
-                edits.push({ p: id, segments: segments(p) });
+            // A paragraph that a page break goes through is shown as one part per sheet.
+            const parts = Array.from(pagesEl.querySelectorAll<HTMLElement>(`.dx-p[data-p="${id}"]`));
+            if (parts.length) {
+                edits.push({ p: id, segments: joinSlots(parts.flatMap(segments)) });
             }
         }
         const body = writeDocx(docx, edits);
@@ -420,6 +456,12 @@ function detect(bytes: Uint8Array): 'docx' | 'doc' | 'rtf' | 'unknown' {
 }
 
 function load(bytes: Uint8Array, editable: boolean) {
+    // Stops the slices of a previous, still unfinished render.
+    const token = ++renderToken;
+    loading = false;
+    if (renderer) {
+        renderer.dispose();
+    }
     const keep = pagesEl.childNodes.length
         ? { zoom: fitWidth ? 'fit' : zoom, scroll: scroller.scrollTop / Math.max(1, scroller.scrollHeight) }
         : null;
@@ -463,32 +505,87 @@ function load(bytes: Uint8Array, editable: boolean) {
         shell.main.appendChild(scroller);
     }
     pagesEl.classList.toggle('dx-plain', format === 'doc');
-    const rendered = new Renderer(pagesEl, files, canEdit).render(model);
-    pages = rendered.pages;
-    images = rendered.images;
-    words = rendered.words;
     pageWidthPt = (model.page && model.page.width) || 595.3;
 
-    editBtn.style.display = canEdit ? '' : 'none';
-    readOnlyTag.style.display = canEdit ? 'none' : '';
-    readOnlyTag.title =
-        format === 'doc' ? 'dx shows Word 97-2003 documents read-only' : 'This document cannot be saved by dx';
-    setEditing(editing);
-
+    const current = new Renderer(pagesEl, files, canEdit, scroller);
+    renderer = current;
+    const steps = current.steps(model);
     const state = keep || saved;
     saved = null;
+    interacted = false;
+    loading = true;
+
+    // Runs render steps until `stop` says so; true when the whole document is rendered.
+    const pump = (stop: () => boolean) => {
+        while (!stop()) {
+            if (steps.next().done) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const sync = () => {
+        const rendered = current.result();
+        pages = rendered.pages;
+        images = rendered.images;
+        words = rendered.words;
+        current.numberPages();
+    };
+    const finish = () => {
+        sync();
+        loading = false;
+        editBtn.style.display = canEdit ? '' : 'none';
+        readOnlyTag.style.display = canEdit ? 'none' : '';
+        readOnlyTag.title =
+            format === 'doc' ? 'dx shows Word 97-2003 documents read-only' : 'This document cannot be saved by dx';
+        setEditing(editing);
+        if (state && state.scroll && !interacted) {
+            scroller.scrollTop = state.scroll * scroller.scrollHeight;
+        }
+        saveState();
+        updatePage();
+        if (matchKey) {
+            // The user searched while the rest of the document was still being added.
+            search(JSON.parse(matchKey));
+            showMatch(Math.min(matchIndex, matches.length - 1));
+        }
+        console.log('[dx] document rendered ' + Math.round(performance.now() - t0) + ' ms after start');
+        post({ loaded: { kind: format, pages: pages.length, words, editable: canEdit } });
+    };
+
+    const chunked = model.blocks.length > CHUNK_MIN_BLOCKS;
+    const firstDone = pump(chunked ? () => current.pageCount >= 2 : () => false);
+    sync();
+    editBtn.style.display = 'none';
+    pagesEl.contentEditable = 'false';
     fitWidth = !state || state.zoom === 'fit';
     applyZoom(fitWidth ? Math.min(1, fitZoom()) : +state.zoom || 1);
     if (fitWidth && fitZoom() >= 1) {
         // A wide panel shows the page at its real size; narrow ones follow the width.
         fitWidth = false;
     }
-    if (state && state.scroll) {
-        scroller.scrollTop = state.scroll * scroller.scrollHeight;
-    }
-    updatePage();
     scroller.focus();
-    post({ loaded: { kind: format, pages: pages.length, words, editable: canEdit } });
+    if (firstDone) {
+        finish();
+        return;
+    }
+    shell.setMessage('Rendering…');
+    updatePage();
+    const slice = () => {
+        if (token !== renderToken) {
+            return;
+        }
+        const end = performance.now() + SLICE_MS;
+        const done = pump(() => performance.now() > end);
+        sync();
+        updatePage();
+        if (done) {
+            finish();
+        } else {
+            setTimeout(slice, 0);
+        }
+    };
+    setTimeout(slice, 0);
 }
 
 // Integration tests: type into the first editable paragraph the way the browser would.
@@ -513,6 +610,8 @@ window.addEventListener('message', (event: MessageEvent) => {
         getData(message.requestId);
     } else if (message.type === 'test' && options.test) {
         testEdit();
+    } else if (typeof message.failed === 'string') {
+        shell.showError('The document could not be opened.', message.failed);
     } else if (message.refresh || message.content) {
         const bytes = toBytes(message.content);
         if (!bytes) {
@@ -523,4 +622,18 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
 });
 
-post({ refresh: true });
+if (options.directUrl) {
+    // Any failure falls back to the host round trip.
+    fetchDirect(options.directUrl).then(bytes => {
+        if (bytes) {
+            console.log(
+                '[dx] file fetched in ' + Math.round(performance.now() - t0) + ' ms, ' + bytes.length + ' bytes'
+            );
+            load(bytes, !!options.editable);
+        } else {
+            post({ refresh: true });
+        }
+    });
+} else {
+    post({ refresh: true });
+}
