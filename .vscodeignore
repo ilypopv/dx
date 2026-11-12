@@ -6,6 +6,7 @@ test/**
 **/*.map
 tsconfig.json
 webpack.config.js
+out/**
 scripts/**
 node_modules/**
 CLAUDE.md
