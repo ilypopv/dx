@@ -22,11 +22,13 @@ import {
     ICONS,
     errorText,
     toBytes,
+    fetchDirect,
     interceptLinks
 } from './shell';
 
 const { AnnotationEditorType, AnnotationMode, PasswordResponses, GlobalWorkerOptions, getDocument } = pdfjsLib;
 
+const t0 = performance.now();
 const options = readOptions();
 const shell = new Shell(document.getElementById('app')!);
 const viewState = new ViewState(options, '1');
@@ -313,6 +315,9 @@ async function load(bytes: Uint8Array) {
             });
         };
         const doc = await task.promise;
+        console.log(
+            '[dx] pdf parsed ' + Math.round(performance.now() - t0) + ' ms after start, ' + bytes.length + ' bytes'
+        );
         if (loadingTask !== task) {
             doc.destroy();
             return;
@@ -379,6 +384,8 @@ window.addEventListener('message', (event: MessageEvent) => {
             rotation: 0,
             id: null
         });
+    } else if (typeof message.failed === 'string') {
+        shell.showError('The PDF could not be opened.', message.failed);
     } else if (message.refresh || message.content) {
         const bytes = toBytes(message.content);
         if (!bytes) {
@@ -401,4 +408,19 @@ window.addEventListener('unload', () => {
     }
 });
 
-post({ refresh: true });
+// The worker boots while the file is on its way.
+ensureWorker();
+editable = !!options.editable;
+if (options.directUrl) {
+    // Any failure falls back to the host round trip.
+    fetchDirect(options.directUrl).then(bytes => {
+        if (bytes) {
+            console.log('[dx] file fetched in ' + Math.round(performance.now() - t0) + ' ms');
+            load(bytes);
+        } else {
+            post({ refresh: true });
+        }
+    });
+} else {
+    post({ refresh: true });
+}
