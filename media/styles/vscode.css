@@ -308,24 +308,82 @@ body {
     outline: none;
 }
 .dx-sheet {
+    display: flex;
+    flex-direction: column;
     box-sizing: border-box;
     width: var(--dx-page-width);
+    /* A page is as tall as Word's; what line spacing adds below the last line may run into the bottom margin. */
+    height: var(--dx-page-height);
     min-height: var(--dx-page-height);
-    padding: var(--dx-page-padding);
     background: #fff;
     color: #000;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
     font-family: var(--dx-font);
     font-size: var(--dx-font-size);
-    line-height: 1.15;
+    /* Word sets text without kerning and ligatures: the widths the layout engine measured */
+    font-kerning: none;
+    font-variant-ligatures: none;
     overflow-wrap: break-word;
     cursor: text;
 }
+/* The areas above and below the body hold the header and footer; they grow when those are tall. */
+.dx-top,
+.dx-bottom {
+    position: relative;
+    flex: none;
+    box-sizing: border-box;
+}
+/* A framed paragraph (the page number) is placed by its frame and takes no room. */
+.dx-framed {
+    position: absolute;
+    left: 0;
+    right: 0;
+}
+.dx-bottom {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+.dx-body {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+/* While the text is edited a page grows with it. */
+.dx-editing .dx-sheet {
+    height: auto;
+}
+.dx-editing .dx-body {
+    flex: 1 0 auto;
+}
+.dx-hf {
+    user-select: none;
+    cursor: default;
+    /* Word shows headers and footers dimmed while the body is being read */
+    opacity: 0.5;
+}
 .dx-p {
-    min-height: 1.15em;
     white-space: pre-wrap;
     tab-size: 36pt;
     margin: 0;
+}
+/* One line as the layout engine broke it: its height, the indent and the stretched spaces are set on it. The text
+   sits at the top of the line, what line spacing adds is below it. */
+.dx-ln {
+    white-space: pre;
+    text-align: left;
+    text-indent: 0;
+}
+.dx-ln .dx-img {
+    vertical-align: top;
+}
+/* While the text is edited it flows freely again. */
+.dx-editing .dx-ln {
+    display: inline;
+    height: auto !important;
+    line-height: inherit !important;
+    padding-left: 0 !important;
+    word-spacing: normal !important;
+    white-space: pre-wrap;
 }
 .dx-li {
     position: relative;
@@ -339,7 +397,15 @@ body {
     white-space: nowrap;
 }
 .dx-tab {
+    display: inline-block;
     white-space: pre;
+    tab-size: 0;
+    overflow: hidden;
+}
+.dx-editing .dx-tab {
+    display: inline;
+    width: auto !important;
+    tab-size: 36pt;
 }
 .dx-h1,
 .dx-h2,
@@ -404,11 +470,14 @@ body {
 .dx-table-wrap {
     max-width: 100%;
     overflow-x: auto;
-    margin: 2pt 0 6pt;
 }
 .dx-table {
     border-collapse: collapse;
     table-layout: auto;
+}
+/* The columns of the document: their cells hold the lines the layout engine broke for them. */
+.dx-table.dx-fixed {
+    table-layout: fixed;
 }
 .dx-table td {
     vertical-align: top;
