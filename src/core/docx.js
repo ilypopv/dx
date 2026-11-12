@@ -45,9 +45,14 @@ const IMAGE_TYPES = {
 
 class DocxError extends Error {}
 
+// Media parts are inflated when something asks for them (an image on screen or a save), not up front:
+// a document with big pictures opens as fast as its text.
+const LAZY_PART = /^word\/media\/[^/]+$/i;
+
 function unzip(bytes) {
     let entries = 0;
     let total = 0;
+    const lazy = [];
     const files = fflate.unzipSync(bytes, {
         filter(file) {
             entries++;
@@ -55,9 +60,26 @@ function unzip(bytes) {
             if (entries > LIMITS.maxEntries || file.originalSize > LIMITS.maxPart || total > LIMITS.maxTotal) {
                 throw new DocxError('The file is too large or looks like a zip bomb.');
             }
+            if (LAZY_PART.test(file.name)) {
+                lazy.push(file.name);
+                return false;
+            }
             return true;
         }
     });
+    for (const name of lazy) {
+        let data;
+        Object.defineProperty(files, name, {
+            enumerable: true,
+            configurable: true,
+            get() {
+                if (!data) {
+                    data = fflate.unzipSync(bytes, { filter: file => file.name === name })[name];
+                }
+                return data;
+            }
+        });
+    }
     return files;
 }
 
@@ -229,6 +251,15 @@ function paraProps(pPr) {
     }
     for (const c of pPr.children) {
         switch (c.name) {
+            case 'w:framePr': {
+                // A framed paragraph (the page number of a header) is placed by its frame and takes no room.
+                const x = c.attrs['w:xAlign'];
+                if (x === 'center' || x === 'right') {
+                    p.align = x;
+                }
+                p.frame = true;
+                break;
+            }
             case 'w:jc': {
                 const v = c.attrs['w:val'];
                 p.align =
@@ -267,7 +298,12 @@ function paraProps(pPr) {
                 const line = num(c, 'w:line');
                 if (line !== undefined) {
                     const rule = c.attrs['w:lineRule'] || 'auto';
-                    p.line = rule === 'auto' ? { factor: line / 240 } : { pt: line / 20 };
+                    p.line =
+                        rule === 'auto'
+                            ? { factor: line / 240 }
+                            : rule === 'atLeast'
+                              ? { pt: line / 20, atLeast: true }
+                              : { pt: line / 20 };
                 }
                 break;
             }
@@ -284,6 +320,18 @@ function paraProps(pPr) {
             }
             case 'w:outlineLvl':
                 p.outline = num(c, 'w:val');
+                break;
+            case 'w:contextualSpacing':
+                p.contextual = onOff(c);
+                break;
+            case 'w:keepNext':
+                p.keepNext = onOff(c);
+                break;
+            case 'w:keepLines':
+                p.keepLines = onOff(c);
+                break;
+            case 'w:widowControl':
+                p.widow = onOff(c);
                 break;
             case 'w:pageBreakBefore':
                 p.pageBreakBefore = onOff(c);
@@ -387,7 +435,7 @@ function headingOf(chain, outline) {
     return undefined;
 }
 
-function readNumbering(files, rels) {
+function readNumbering(files, rels, theme) {
     const abstract = new Map();
     const nums = new Map();
     let tree;
@@ -412,6 +460,7 @@ function readNumbering(files, rels) {
                 text: text ? text.attrs['w:val'] || '' : '',
                 start: start ? num(start, 'w:val') : 1,
                 font: font ? font.attrs['w:ascii'] : undefined,
+                r: runProps(child(lvl, 'w:rPr'), theme),
                 p: paraProps(child(lvl, 'w:pPr'))
             };
         }
@@ -627,16 +676,40 @@ class BodyReader {
         if (heading) {
             block.style = heading;
         }
+        if (styleId) {
+            block.sid = styleId;
+        }
 
         if (props.numId && props.numId !== '0') {
             const ilvl = props.ilvl || 0;
             const lvl = ctx.numbering.level(props.numId, ilvl);
             const marker = ctx.numbering.next(props.numId, ilvl);
             if (lvl) {
-                props = merge(props, lvl.p, direct);
+                // Numbering set on the paragraph itself beats the style's indents; numbering that comes with the
+                // style yields to them.
+                props = direct.numId
+                    ? merge(props, lvl.p, direct)
+                    : merge(ctx.styles.defaults.p, lvl.p, ...chain.map(s => s.p), direct);
             }
             if (marker !== undefined) {
                 block.list = { marker, level: ilvl };
+                // The number is formatted by the paragraph mark, then by the numbering level.
+                const mark = merge(baseRun, runProps(child(pPr, 'w:rPr'), ctx.theme), lvl && lvl.r);
+                const format = {};
+                for (const key of ['font', 'size', 'b', 'i', 'color']) {
+                    if (mark[key] !== undefined) {
+                        format[key] = mark[key];
+                    }
+                }
+                // Bullets are drawn from symbol fonts that the browser does not have; they are mapped to Unicode.
+                // The font still sets the height of the line, as in Word.
+                if (format.font && /symbol|wingdings|webdings/i.test(format.font)) {
+                    block.list.metricFont = format.font;
+                    delete format.font;
+                }
+                if (Object.keys(format).length) {
+                    block.list.format = format;
+                }
             }
         }
 
@@ -644,10 +717,27 @@ class BodyReader {
             block.align = props.align;
         }
         const box = {};
-        for (const key of ['left', 'right', 'first', 'before', 'after', 'shade']) {
+        for (const key of [
+            'left',
+            'right',
+            'first',
+            'before',
+            'after',
+            'shade',
+            'contextual',
+            'keepNext',
+            'keepLines',
+            'pageBreakBefore',
+            'frame'
+        ]) {
             if (props[key]) {
                 box[key] = props[key];
             }
+        }
+        // Word keeps widows and orphans away unless the document switches it off (in practice the default is on,
+        // although the schema says off).
+        if (props.widow === false) {
+            box.noWidow = true;
         }
         if (props.line) {
             box.line = props.line;
@@ -655,12 +745,23 @@ class BodyReader {
         if (Object.keys(box).length) {
             block.layout = box;
         }
-        if (props.pageBreakBefore) {
-            out.push({ type: 'pagebreak' });
-        }
 
-        this.state = { fields: [], baseRun, block, after: [], seenText: false };
+        this.state = { fields: [], baseRun, block, after: [], seenText: false, hardBreak: false };
         this.inline(node, block.runs, {});
+        if (this.state.hardBreak && !block.runs.some(r => r.br || r.image || (r.text && r.text.length))) {
+            // Only a manual page break: Word ends the page with it and shows nothing of the paragraph after it.
+            block.pageBreakOnly = true;
+        }
+        if (!block.runs.length) {
+            // An empty paragraph is as tall as its paragraph mark says (title pages are spaced with them).
+            const mark = merge(baseRun, runProps(child(pPr, 'w:rPr'), ctx.theme));
+            if (mark.size) {
+                block.markSize = mark.size;
+            }
+            if (mark.font) {
+                block.markFont = mark.font;
+            }
+        }
         out.push(block);
         for (const extra of this.state.after) {
             out.push(extra);
@@ -668,8 +769,11 @@ class BodyReader {
         // A section break inside the paragraph properties starts a new page unless it is continuous.
         const sect = child(pPr, 'w:sectPr');
         if (sect) {
+            ctx.sectPrs.push(sect);
             const type = child(sect, 'w:type');
-            if (!type || type.attrs['w:val'] !== 'continuous') {
+            const newPage = !type || type.attrs['w:val'] !== 'continuous';
+            out.push({ type: 'section', newPage });
+            if (newPage) {
                 out.push({ type: 'pagebreak' });
             }
         }
@@ -688,7 +792,15 @@ class BodyReader {
                     break;
                 }
                 case 'w:fldSimple': {
-                    const m = /HYPERLINK\s+"([^"]+)"/i.exec(node.attrs['w:instr'] || '');
+                    const instr = node.attrs['w:instr'] || '';
+                    const m = /HYPERLINK\s+"([^"]+)"/i.exec(instr);
+                    const counter = this.counterOf(instr);
+                    if (counter) {
+                        this.state.fields.push({ code: instr, result: true, kind: counter, done: false });
+                        this.inline(node, runs, link);
+                        this.state.fields.pop();
+                        break;
+                    }
                     this.inline(node, runs, m ? { href: m[1] } : link);
                     break;
                 }
@@ -708,6 +820,15 @@ class BodyReader {
                     break;
             }
         }
+    }
+
+    // The page counters of headers and footers (a body paragraph keeps the text Word stored, so it stays editable).
+    counterOf(code) {
+        if (this.editable) {
+            return undefined;
+        }
+        const m = /^\s*(PAGE|NUMPAGES)\b/i.exec(code);
+        return m ? (m[1].toUpperCase() === 'PAGE' ? 'page' : 'pages') : undefined;
     }
 
     slot(node, parent, kind) {
@@ -771,6 +892,13 @@ class BodyReader {
             } else if (type === 'separate' && fields.length) {
                 const field = fields[fields.length - 1];
                 field.result = true;
+                const counter = this.counterOf(field.code);
+                if (counter) {
+                    // The cached result may be missing or stale: the viewer counts the pages itself.
+                    field.kind = counter;
+                    field.done = true;
+                    runs.push(Object.assign({ text: '', field: counter }, this.pieceFormat(base, link)));
+                }
                 const m = /HYPERLINK\s+"([^"]+)"/i.exec(field.code);
                 if (m && !/\\l/.test(field.code)) {
                     field.href = m[1];
@@ -793,6 +921,14 @@ class BodyReader {
         switch (c.name) {
             case 'w:t': {
                 const text = textOf(c);
+                const open = fields[fields.length - 1];
+                if (open && open.kind) {
+                    if (!open.done) {
+                        open.done = true;
+                        runs.push(Object.assign({ text: '', field: open.kind }, format));
+                    }
+                    return;
+                }
                 if (text) {
                     state.seenText = true;
                 }
@@ -817,17 +953,12 @@ class BodyReader {
                 const type = c.attrs['w:type'];
                 if (type === 'page' || type === 'column') {
                     state.after.push({ type: 'pagebreak' });
+                    state.hardBreak = true;
                     return;
                 }
                 runs.push({ text: '', br: true, slot: this.slot(c, parent, 'x') });
                 return;
             }
-            case 'w:lastRenderedPageBreak':
-                // Where Word broke the page when it last laid the document out; used at paragraph granularity.
-                if (!state.seenText && !runs.length) {
-                    state.block.pageStart = true;
-                }
-                return;
             case 'w:footnoteReference':
             case 'w:endnoteReference': {
                 const id = c.attrs['w:id'];
@@ -935,7 +1066,15 @@ class BodyReader {
         const out = { type: 'table', rows: [], grid, borders: borders !== false };
         // Vertical merges: the cell that restarts a merge grows a rowspan for every continuing cell below it.
         const open = new Map();
+        // Leading rows marked "repeat as header row" are shown again at the top of every page the table continues on.
+        let headerRows = 0;
+        let heading = true;
         for (const tr of rows) {
+            if (heading && onOff(child(child(tr, 'w:trPr'), 'w:tblHeader')) === true) {
+                headerRows++;
+            } else {
+                heading = false;
+            }
             const row = [];
             let col = 0;
             const cells = [];
@@ -981,6 +1120,9 @@ class BodyReader {
             }
             out.rows.push(row);
         }
+        if (headerRows && headerRows < out.rows.length) {
+            out.headerRows = headerRows;
+        }
         return out;
     }
 }
@@ -1025,7 +1167,7 @@ function readDocx(bytes) {
     const rels = readRels(files, part);
     const theme = readTheme(files, rels);
     const styles = readStyles(files, rels, theme);
-    const numbering = new Numbering(readNumbering(files, rels));
+    const numbering = new Numbering(readNumbering(files, rels, theme));
 
     const notes = { footnotes: readNotes(files, rels, 'footnotes'), endnotes: readNotes(files, rels, 'endnotes') };
     const noteOrder = { footnotes: [], endnotes: [] };
@@ -1037,6 +1179,7 @@ function readDocx(bytes) {
         numbering,
         slots: [],
         paragraphs: [],
+        sectPrs: [],
         noteMark(kind, id) {
             let index = noteOrder[kind].indexOf(id);
             if (index < 0) {
@@ -1048,6 +1191,7 @@ function readDocx(bytes) {
     };
 
     const blocks = new BodyReader(ctx, true).blocks(body, []);
+    const sectPrs = ctx.sectPrs.slice();
 
     // Footnotes and endnotes follow the body, read-only.
     const noteBlocks = [];
@@ -1070,27 +1214,85 @@ function readDocx(bytes) {
     }
 
     const sect = child(body, 'w:sectPr');
-    const pgSz = child(sect, 'w:pgSz');
-    const pgMar = child(sect, 'w:pgMar');
-    const page = {
-        width: (num(pgSz, 'w:w') || 11906) / 20,
-        height: (num(pgSz, 'w:h') || 16838) / 20,
-        top: (num(pgMar, 'w:top') ?? 1440) / 20,
-        right: (num(pgMar, 'w:right') ?? 1440) / 20,
-        bottom: (num(pgMar, 'w:bottom') ?? 1440) / 20,
-        left: (num(pgMar, 'w:left') ?? 1440) / 20
-    };
+    const page = pageOf(sect);
     const defaults = styles.defaults.r;
     const font = { family: defaults.font || theme.minor, size: defaults.size || 11 };
+    const { sections, evenOdd, feLayout, tabStop } = readSections(files, [...sectPrs, sect], rels, ctx);
 
     return {
-        model: { blocks, notes: noteBlocks, page, font },
+        model: { blocks, notes: noteBlocks, page, font, sections, evenOdd, feLayout, tabStop },
         files,
         part,
         tree,
         slots: ctx.slots,
         paragraphs: ctx.paragraphs
     };
+}
+
+// The page of a section: size (already turned for a landscape section) and margins, in points.
+function pageOf(sectPr) {
+    const pgSz = child(sectPr, 'w:pgSz');
+    const pgMar = child(sectPr, 'w:pgMar');
+    return {
+        width: (num(pgSz, 'w:w') || 11906) / 20,
+        height: (num(pgSz, 'w:h') || 16838) / 20,
+        top: (num(pgMar, 'w:top') ?? 1440) / 20,
+        right: (num(pgMar, 'w:right') ?? 1440) / 20,
+        bottom: (num(pgMar, 'w:bottom') ?? 1440) / 20,
+        left: (num(pgMar, 'w:left') ?? 1440) / 20,
+        header: (num(pgMar, 'w:header') ?? 720) / 20,
+        footer: (num(pgMar, 'w:footer') ?? 720) / 20
+    };
+}
+
+// The headers and footers of every section. A section without its own reference of a kind inherits the previous one.
+function readSections(files, sectPrs, rels, ctx) {
+    const cache = new Map();
+    const blocksOf = target => {
+        if (!cache.has(target)) {
+            const tree = readPart(files, target);
+            const root = tree && (child(tree, 'w:hdr') || child(tree, 'w:ftr'));
+            const own = Object.assign({}, ctx, {
+                rels: readRels(files, target),
+                slots: [],
+                paragraphs: [],
+                sectPrs: []
+            });
+            cache.set(target, root ? new BodyReader(own, false).blocks(root, []) : []);
+        }
+        return cache.get(target);
+    };
+    const inherited = { header: {}, footer: {} };
+    const sections = sectPrs.map(sp => {
+        const section = { header: {}, footer: {}, page: pageOf(sp) };
+        for (const kind of ['header', 'footer']) {
+            for (const ref of children(sp, `w:${kind}Reference`)) {
+                const rel = rels.get(ref.attrs['r:id']);
+                if (rel && !rel.external && files[rel.target]) {
+                    inherited[kind][ref.attrs['w:type'] || 'default'] = rel.target;
+                }
+            }
+            for (const [type, target] of Object.entries(inherited[kind])) {
+                const blocks = blocksOf(target);
+                if (blocks.length) {
+                    section[kind][type] = blocks;
+                }
+            }
+        }
+        section.titlePg = onOff(child(sp, 'w:titlePg')) === true;
+        const start = num(child(sp, 'w:pgNumType'), 'w:start');
+        if (start !== undefined && start !== null) {
+            section.start = start;
+        }
+        return section;
+    });
+    const settings = child(readPart(files, 'word/settings.xml'), 'w:settings');
+    const evenOdd = onOff(child(settings, 'w:evenAndOddHeaders')) === true;
+    const compat = child(settings, 'w:compat');
+    // East Asian layout: punctuation may hang past the right margin and some characters may not start or end a line.
+    const feLayout = !!child(compat, 'w:useFELayout');
+    const tab = num(child(settings, 'w:defaultTabStop'), 'w:val');
+    return { sections, evenOdd, feLayout, tabStop: tab ? tab / 20 : 36 };
 }
 
 // ---------- writing ----------
