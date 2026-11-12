@@ -146,7 +146,7 @@ test('breaks, tabs, deleted text, images, footnotes and the page setup', () => {
     assert.ok(first.runs.some(r => r.br));
     assert.equal(textOf(second), 'before break');
     assert.equal(brk.type, 'pagebreak');
-    assert.equal(third.pageStart, true);
+    assert.equal(third.pageStart, undefined, "Word's own page marks are not used");
     assert.equal(third.runs[1].text, '1');
     assert.equal(third.runs[1].sup, true);
     assert.deepEqual(picture.runs[0].image, {
@@ -157,7 +157,16 @@ test('breaks, tabs, deleted text, images, footnotes and the page setup', () => {
     });
     assert.ok(files['word/media/image1.png'].length > 0);
     assert.equal(textOf(model.notes[0]), '1 The note.');
-    assert.deepEqual(model.page, { width: 612, height: 792, top: 36, right: 36, bottom: 36, left: 36 });
+    assert.deepEqual(model.page, {
+        width: 612,
+        height: 792,
+        top: 36,
+        right: 36,
+        bottom: 36,
+        left: 36,
+        header: 36,
+        footer: 36
+    });
 });
 
 test('text edits are written back into the original runs', () => {
@@ -233,4 +242,156 @@ test('damaged and foreign files are refused with a reason', () => {
     assert.throws(() => readDocx(fflate.zipSync({ 'a.txt': new Uint8Array([1]) })), /no main document/);
     const truncated = makeDocx({ body: p('x') }).slice(0, 60);
     assert.throws(() => readDocx(truncated), /damaged|ZIP/);
+});
+
+test('media parts are inflated on demand and survive a save', () => {
+    const rel = `<Relationship Id="rIdImg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>`;
+    const doc = readDocx(makeDocx({ body: p('x'), rels: [rel] }));
+    assert.ok('word/media/image1.png' in doc.files);
+    const first = doc.files['word/media/image1.png'];
+    assert.ok(first.length > 0);
+    assert.equal(doc.files['word/media/image1.png'], first, 'the inflated bytes are cached');
+
+    const saved = fflate.unzipSync(writeDocx(doc, []));
+    assert.deepEqual(Array.from(saved['word/media/image1.png']), Array.from(first));
+});
+
+test("Word's last rendered page breaks are ignored: Word lays the pages out again on every open", () => {
+    const cell = t => `<w:tc><w:p><w:r>${t}<w:t>x</w:t></w:r></w:p></w:tc>`;
+    const body =
+        '<w:p><w:r><w:t>one </w:t></w:r><w:r><w:lastRenderedPageBreak/><w:t>two</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:lastRenderedPageBreak/><w:t>three</w:t></w:r></w:p>' +
+        `<w:tbl><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid><w:tr>${cell('')}</w:tr><w:tr>${cell('<w:lastRenderedPageBreak/>')}</w:tr></w:tbl>`;
+    const [a, b, table] = readDocx(makeDocx({ body })).model.blocks;
+    assert.deepEqual(
+        a.runs.map(r => r.text),
+        ['one ', 'two']
+    );
+    assert.equal(b.pageStart, undefined);
+    assert.equal(table.breaks, undefined);
+});
+
+test('an empty paragraph keeps the size of its paragraph mark', () => {
+    const body = '<w:p><w:pPr><w:rPr><w:sz w:val="28"/></w:rPr></w:pPr></w:p><w:p><w:r><w:t>text</w:t></w:r></w:p>';
+    const blocks = readDocx(makeDocx({ body })).model.blocks;
+    assert.equal(blocks[0].markSize, 14);
+    assert.equal(blocks[1].markSize, undefined, 'only empty paragraphs need it');
+});
+
+test('headers get a page counter even when Word stored no result, with the numbering of the section', () => {
+    const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const field =
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PAGE </w:instrText></w:r><w:r><w:rPr><w:sz w:val="28"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header';
+    const sectPr =
+        '<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:pgNumType w:start="3"/><w:titlePg/></w:sectPr>';
+    const base = fflate.unzipSync(
+        makeDocx({ body: p('x'), sectPr, rels: [`<Relationship Id="rIdH" Type="${rel}" Target="header1.xml"/>`] })
+    );
+    base['word/header1.xml'] = new TextEncoder().encode(
+        `<w:hdr ${W_NS}><w:p><w:pPr><w:framePr w:xAlign="center"/></w:pPr>${field}</w:p></w:hdr>`
+    );
+    const model = readDocx(fflate.zipSync(base)).model;
+    assert.equal(model.sections.length, 1);
+    const [section] = model.sections;
+    assert.equal(section.start, 3);
+    assert.equal(section.titlePg, true);
+    assert.equal(section.footer.default, undefined);
+    const para = section.header.default[0];
+    assert.equal(para.align, 'center', 'a framed page number is centered');
+    assert.equal(para.layout.frame, true, 'a framed paragraph takes no room in the header');
+    assert.deepEqual(para.runs, [{ text: '', field: 'page', size: 14 }]);
+});
+
+test('list numbers are formatted by the paragraph mark and the numbering level', () => {
+    const numbering =
+        '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';
+    const body =
+        '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:rPr><w:rFonts w:ascii="Times New Roman"/><w:sz w:val="28"/></w:rPr></w:pPr><w:r><w:t>item</w:t></w:r></w:p>';
+    const block = readDocx(makeDocx({ body, numbering })).model.blocks[0];
+    assert.equal(block.list.marker, '1.');
+    assert.deepEqual(block.list.format, { font: 'Times New Roman', size: 14 });
+});
+
+test('rows marked as header rows are remembered for the pages a table continues on', () => {
+    const row = head =>
+        `<w:tr>${head ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}<w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>`;
+    const body = `<w:tbl><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>${row(true)}${row(true)}${row(false)}${row(true)}</w:tbl>`;
+    const table = readDocx(makeDocx({ body })).model.blocks[0];
+    assert.equal(table.headerRows, 2, 'only the leading run of header rows repeats');
+});
+
+test('every section keeps its own page size and margins, a landscape one included', () => {
+    const portrait =
+        '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:left="1701" w:right="850" w:bottom="1134"/></w:sectPr>';
+    const landscape =
+        '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:left="720" w:right="720" w:bottom="720"/></w:sectPr>';
+    const body = `<w:p><w:pPr>${portrait}</w:pPr><w:r><w:t>a</w:t></w:r></w:p><w:p><w:r><w:t>b</w:t></w:r></w:p>`;
+    const model = readDocx(makeDocx({ body, sectPr: landscape })).model;
+    assert.equal(model.sections.length, 2);
+    assert.equal(model.sections[0].page.width, 595.3);
+    assert.equal(model.sections[0].page.left, 85.05);
+    assert.equal(model.sections[1].page.width, 841.9);
+    assert.equal(model.sections[1].page.height, 595.3);
+    assert.deepEqual(
+        model.blocks.map(b => b.type),
+        ['p', 'section', 'pagebreak', 'p']
+    );
+});
+
+test('line spacing keeps its rule and contextual spacing is read', () => {
+    const style =
+        '<w:style w:type="paragraph" w:styleId="Body"><w:name w:val="Body"/><w:pPr><w:contextualSpacing/></w:pPr></w:style>';
+    const body =
+        '<w:p><w:pPr><w:pStyle w:val="Body"/><w:spacing w:line="360" w:lineRule="atLeast"/></w:pPr><w:r><w:t>a</w:t></w:r></w:p>' +
+        '<w:p><w:pPr><w:spacing w:line="480" w:lineRule="auto"/></w:pPr><w:r><w:t>b</w:t></w:r></w:p>';
+    const [a, b] = readDocx(makeDocx({ body, styles: style })).model.blocks;
+    assert.deepEqual(a.layout.line, { pt: 18, atLeast: true });
+    assert.equal(a.layout.contextual, true);
+    assert.equal(a.sid, 'Body');
+    assert.deepEqual(b.layout.line, { factor: 2 });
+});
+
+test('widow control is on unless the document switches it off', () => {
+    const body =
+        '<w:p><w:r><w:t>a</w:t></w:r></w:p><w:p><w:pPr><w:widowControl w:val="0"/></w:pPr><w:r><w:t>b</w:t></w:r></w:p>';
+    const [a, b] = readDocx(makeDocx({ body })).model.blocks;
+    assert.equal(a.layout && a.layout.noWidow, undefined);
+    assert.equal(b.layout.noWidow, true);
+});
+
+test('numbering set on the paragraph beats the style indents, numbering that comes with the style yields to them', () => {
+    const numbering =
+        '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="-"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';
+    const styles =
+        '<w:style w:type="paragraph" w:styleId="Dashed"><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr><w:ind w:left="714" w:hanging="357"/></w:pPr></w:style>';
+    const body =
+        '<w:p><w:pPr><w:pStyle w:val="Dashed"/></w:pPr><w:r><w:t>a</w:t></w:r></w:p>' +
+        '<w:p><w:pPr><w:pStyle w:val="Dashed"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>b</w:t></w:r></w:p>';
+    const [a, b] = readDocx(makeDocx({ body, styles, numbering })).model.blocks;
+    assert.equal(a.layout.left, 35.7, 'the style indent');
+    assert.equal(b.layout.left, 72, 'the indent of the numbering level');
+});
+
+test('a paragraph that only carries a manual page break is marked as such', () => {
+    const body =
+        '<w:p><w:r><w:t>end</w:t></w:r></w:p><w:p><w:r><w:br w:type="page"/></w:r></w:p><w:p><w:r><w:t>next</w:t><w:br w:type="page"/></w:r></w:p>';
+    const blocks = readDocx(makeDocx({ body })).model.blocks;
+    assert.deepEqual(
+        blocks.map(b => b.type),
+        ['p', 'p', 'pagebreak', 'p', 'pagebreak']
+    );
+    assert.equal(blocks[1].pageBreakOnly, true);
+    assert.equal(blocks[3].pageBreakOnly, undefined, 'text before the break stays on the page');
+});
+
+test('East Asian layout and the default tab stop come from the settings', () => {
+    const base = fflate.unzipSync(makeDocx({ body: p('x') }));
+    base['word/settings.xml'] = new TextEncoder().encode(
+        '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="708"/><w:compat><w:useFELayout/></w:compat></w:settings>'
+    );
+    const model = readDocx(fflate.zipSync(base)).model;
+    assert.equal(model.feLayout, true);
+    assert.equal(model.tabStop, 35.4);
+    assert.equal(readDocx(makeDocx({ body: p('x') })).model.feLayout, false);
 });
