@@ -1,0 +1,269 @@
+{
+  "meta": {
+    "generatedAt": "2026-11-12T13:31:10.263Z",
+    "rangeLabel": "all",
+    "agents": [
+      "claude"
+    ],
+    "projectFilter": "all",
+    "totals": {
+      "sessions": 1,
+      "durationMs": 2310790,
+      "turns": 10,
+      "files": 5,
+      "netLines": 13,
+      "toolCallsTotal": 9,
+      "toolSuccessRate": 100,
+      "totalCostUSD": 0.2174172,
+      "cacheReadCostUSD": 0.0382252,
+      "pricedSessions": 1
+    },
+    "unpricedModels": [],
+    "estimatedModels": [],
+    "localModels": [],
+    "coverage": [
+      {
+        "agentName": "claude",
+        "total": 1,
+        "priced": 1,
+        "withLog": 1
+      }
+    ],
+    "userEmail": "ilia_popov2@epam.com",
+    "periodStart": "2026-11-12T12:52:36.451Z",
+    "periodEnd": "2026-11-12T13:31:07.241Z"
+  },
+  "sessions": [
+    {
+      "sessionId": "efe36c69-f821-4691-acbf-7877ca511a7c",
+      "agentName": "claude",
+      "provider": "ai-run-sso",
+      "title": "Это иконка моего расширения dx для VS Code: Это иконка моего расширения xl для VS Code: Помоги мне в таком же стиле нарисовать иконку для GitHub организации под названием VS-Office Мои расширения созданы для того, чтобы в VS Code открывать офисные файлы: docx, pdf, xlsx, csv, tsv Положи проект новой иконки в корень текущего репозитория",
+      "project": "/Users/kktw147/Desktop/smth/dx",
+      "branch": "main",
+      "startTime": 1794487956451,
+      "durationMs": 2310790,
+      "turns": 10,
+      "fileOps": 5,
+      "linesAdded": 13,
+      "linesRemoved": 0,
+      "linesModified": 0,
+      "netLines": 13,
+      "filesChanged": 1,
+      "filesWritten": 1,
+      "filesEdited": 0,
+      "toolCallsTotal": 9,
+      "toolCallsSuccess": 9,
+      "toolCallsFailure": 0,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "languages": [],
+      "tools": [
+        {
+          "toolName": "Bash",
+          "totalCalls": 4,
+          "successCount": 4,
+          "failureCount": 0,
+          "successRate": 100
+        },
+        {
+          "toolName": "Read",
+          "totalCalls": 4,
+          "successCount": 4,
+          "failureCount": 0,
+          "successRate": 100
+        },
+        {
+          "toolName": "Write",
+          "totalCalls": 1,
+          "successCount": 1,
+          "failureCount": 0,
+          "successRate": 100
+        }
+      ],
+      "tokens": {
+        "input": 20,
+        "output": 9586,
+        "cacheRead": 382252,
+        "cacheCreation": 20823,
+        "cacheCreation1h": 20823,
+        "total": 412681
+      },
+      "costUSD": 0.2174172,
+      "cacheReadCostUSD": 0.0382252,
+      "perModelCost": [
+        {
+          "model": "claude-sonnet-5-5",
+          "tokens": {
+            "input": 2,
+            "output": 1428,
+            "cacheRead": 25218,
+            "cacheCreation": 9421,
+            "cacheCreation1h": 9421,
+            "total": 36069
+          },
+          "costUSD": 0.054489800000000005,
+          "unpriced": false
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "tokens": {
+            "input": 18,
+            "output": 8158,
+            "cacheRead": 357034,
+            "cacheCreation": 11402,
+            "cacheCreation1h": 11402,
+            "total": 376612
+          },
+          "costUSD": 0.1629274,
+          "unpriced": false
+        }
+      ],
+      "hadLog": true,
+      "agentSessionFile": "/Users/kktw147/.claude/projects/-Users-kktw147-Desktop-smth-dx/220cb79c-86ff-4c02-9ad3-edcccb4f7509.jsonl",
+      "costSeries": [
+        {
+          "t": 1794488000974,
+          "cost": 0.054489800000000005,
+          "tokens": 36069
+        },
+        {
+          "t": 1794488009200,
+          "cost": 0.06626570000000001,
+          "tokens": 72691
+        },
+        {
+          "t": 1794488013040,
+          "cost": 0.07533730000000001,
+          "tokens": 110071
+        },
+        {
+          "t": 1794488076723,
+          "cost": 0.10745570000000002,
+          "tokens": 150198
+        },
+        {
+          "t": 1794488082165,
+          "cost": 0.12257140000000001,
+          "tokens": 190416
+        },
+        {
+          "t": 1794488087041,
+          "cost": 0.13313350000000002,
+          "tokens": 231568
+        },
+        {
+          "t": 1794488155118,
+          "cost": 0.1701254,
+          "tokens": 275895
+        },
+        {
+          "t": 1794488160088,
+          "cost": 0.1873737,
+          "tokens": 320336
+        },
+        {
+          "t": 1794488166807,
+          "cost": 0.203632,
+          "tokens": 366184
+        },
+        {
+          "t": 1794488176653,
+          "cost": 0.2174172,
+          "tokens": 412681
+        }
+      ],
+      "costSource": "native-estimate",
+      "costBasis": "standard-api-tokens",
+      "dispatchesComplete": true,
+      "rootOwnCostUSD": 0.2174172,
+      "unlinkedCostUSD": 0,
+      "unlinkedAgentIds": [],
+      "observedEnd": 1794490267241,
+      "rootOwnTokens": {
+        "input": 20,
+        "output": 9586,
+        "cacheRead": 382252,
+        "cacheCreation": 20823,
+        "cacheCreation1h": 20823,
+        "total": 412681
+      },
+      "unlinkedTokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheCreation": 0,
+        "cacheCreation1h": 0,
+        "total": 0
+      },
+      "modelTimeline": [
+        {
+          "t": 1794488000974,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0544898,
+          "tokens": 36069
+        },
+        {
+          "t": 1794488009200,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0117759,
+          "tokens": 36622
+        },
+        {
+          "t": 1794488013040,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0090716,
+          "tokens": 37380
+        },
+        {
+          "t": 1794488076723,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0321184,
+          "tokens": 40127
+        },
+        {
+          "t": 1794488082165,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0151157,
+          "tokens": 40218
+        },
+        {
+          "t": 1794488087041,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0105621,
+          "tokens": 41152
+        },
+        {
+          "t": 1794488155118,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0369919,
+          "tokens": 44327
+        },
+        {
+          "t": 1794488160088,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0172483,
+          "tokens": 44441
+        },
+        {
+          "t": 1794488166807,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0162583,
+          "tokens": 45848
+        },
+        {
+          "t": 1794488176653,
+          "model": "claude-sonnet-5-5",
+          "costUSD": 0.0137852,
+          "tokens": 46497
+        }
+      ],
+      "routedTurnsPct": 0,
+      "skillInvocations": [],
+      "agentInvocations": [],
+      "commandInvocations": [],
+      "sessionSource": "Pure chat"
+    }
+  ]
+}
