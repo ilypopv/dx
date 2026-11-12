@@ -8,6 +8,9 @@ export interface Options {
     name: string;
     uri: string;
     media: string;
+    editable?: boolean;
+    // Set for a clean local file: the webview reads it straight from disk instead of asking the host.
+    directUrl?: string;
     state: any;
     test?: boolean;
 }
@@ -404,6 +407,21 @@ export function toBytes(body: any): Uint8Array | undefined {
         return Uint8Array.from(body.data);
     }
     return undefined;
+}
+
+// Reads the file straight from disk; null on any failure, so the caller falls back to the host round trip.
+export function fetchDirect(url: string): Promise<Uint8Array | null> {
+    return fetch(url, { cache: 'no-store' })
+        .then(r => {
+            if (!r.ok) {
+                throw new Error('HTTP ' + r.status);
+            }
+            return r.arrayBuffer();
+        })
+        .then(
+            buf => new Uint8Array(buf),
+            () => null
+        );
 }
 
 // Opens http(s) and mailto links through the host, the webview itself never navigates.
