@@ -27,11 +27,14 @@ async function readFile(uri: vscode.Uri): Promise<Uint8Array> {
 // The document behind one or more dx editors. It holds the last known bytes (disk, backup or the latest save)
 // and, while edited, asks the webview that made the edits for the new bytes on save and backup.
 export class DxDocument extends Disposable implements vscode.CustomDocument {
-    static async create(uri: vscode.Uri, kind: Kind, backupId: string | undefined): Promise<DxDocument> {
+    // The file is read while the webview boots; consumers of documentData wait for `ready`.
+    static create(uri: vscode.Uri, kind: Kind, backupId: string | undefined): DxDocument {
         const dataFile = typeof backupId === 'string' ? vscode.Uri.parse(backupId) : uri;
-        return new DxDocument(uri, kind, await readFile(dataFile), typeof backupId === 'string');
+        return new DxDocument(uri, kind, readFile(dataFile), typeof backupId === 'string');
     }
 
+    private _documentData: Uint8Array = new Uint8Array();
+    private _ready: Promise<void>;
     private readonly _views = new Set<DocumentView>();
     private _lastView: DocumentView | undefined;
     private _dirty: boolean;
@@ -47,12 +50,25 @@ export class DxDocument extends Disposable implements vscode.CustomDocument {
     private constructor(
         public readonly uri: vscode.Uri,
         public readonly kind: Kind,
-        private _documentData: Uint8Array,
-        restored: boolean
+        initialContent: Promise<Uint8Array>,
+        // true when the model was restored from a hot-exit backup, so the disk file is not the content to show
+        public readonly restored: boolean
     ) {
         super();
         this._dirty = restored;
+        const ready: Promise<void> = initialContent.then(data => {
+            // A revert before the first read finished has already replaced the model.
+            if (this._ready === ready) {
+                this._documentData = data;
+            }
+        });
+        this._ready = ready;
+        ready.catch(() => undefined);
         this.watch();
+    }
+
+    get ready(): Promise<void> {
+        return this._ready;
     }
 
     get documentData(): Uint8Array {
@@ -102,6 +118,7 @@ export class DxDocument extends Disposable implements vscode.CustomDocument {
 
     // Reloads a clean document when the file changes on disk; a dirty one only warns, it never loses edits.
     private async diskChanged() {
+        await this._ready;
         const disk = await readFile(this.uri);
         if (sameBytes(disk, this._documentData)) {
             return;
@@ -141,6 +158,7 @@ export class DxDocument extends Disposable implements vscode.CustomDocument {
     }
 
     private async currentData(token: vscode.CancellationToken): Promise<Uint8Array> {
+        await this._ready;
         const view =
             this._lastView && !this._lastView.isDisposed
                 ? this._lastView
@@ -184,6 +202,7 @@ export class DxDocument extends Disposable implements vscode.CustomDocument {
 
     async revert(_cancellation: vscode.CancellationToken): Promise<void> {
         this._documentData = await readFile(this.uri);
+        this._ready = Promise.resolve();
         this._dirty = false;
         this.refreshViews();
     }
@@ -238,12 +257,12 @@ export class DxEditorProvider implements vscode.CustomEditorProvider<DxDocument>
         private readonly kind: Kind
     ) {}
 
-    async openCustomDocument(
+    openCustomDocument(
         uri: vscode.Uri,
         openContext: vscode.CustomDocumentOpenContext,
         _token: vscode.CancellationToken
-    ): Promise<DxDocument> {
-        const document = await DxDocument.create(uri, this.kind, openContext.backupId);
+    ): DxDocument {
+        const document = DxDocument.create(uri, this.kind, openContext.backupId);
         const listeners: vscode.Disposable[] = [];
         // A content change (not an edit with undo/redo): the webview keeps its own undo history.
         listeners.push(document.onDidChange(() => this._onDidChangeCustomDocument.fire({ document })));
