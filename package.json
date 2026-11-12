@@ -2,7 +2,7 @@
   "name": "dx",
   "displayName": "dx",
   "description": "View PDF, DOCX and DOC files in VS Code; annotate PDFs and edit the text of DOCX documents.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "publisher": "ilypopv",
   "icon": "img/icon.png",
   "author": {
@@ -33,6 +33,11 @@
     "vscode"
   ],
   "activationEvents": [
+    "onCommand:pdf.preview",
+    "onCommand:word.preview",
+    "onLanguage:pdf",
+    "onLanguage:docx",
+    "onLanguage:doc",
     "onCustomEditor:dx-pdf-editor",
     "onCustomEditor:dx-docx-editor",
     "onCustomEditor:dx-doc-editor"
@@ -46,10 +51,97 @@
     "virtualWorkspaces": true
   },
   "contributes": {
+    "languages": [
+      {
+        "id": "pdf",
+        "extensions": [
+          ".pdf"
+        ],
+        "aliases": [
+          "PDF"
+        ]
+      },
+      {
+        "id": "docx",
+        "extensions": [
+          ".docx"
+        ],
+        "aliases": [
+          "Word"
+        ]
+      },
+      {
+        "id": "doc",
+        "extensions": [
+          ".doc"
+        ],
+        "aliases": [
+          "Word 97-2003"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "pdf.preview",
+        "category": "PDF",
+        "title": "Open Preview"
+      },
+      {
+        "command": "word.preview",
+        "category": "Word",
+        "title": "Open Preview"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceLangId == pdf",
+          "command": "pdf.preview",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == docx",
+          "command": "word.preview",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == doc",
+          "command": "word.preview",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "when": "resourceLangId == pdf",
+          "command": "pdf.preview",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == docx",
+          "command": "word.preview",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == doc",
+          "command": "word.preview",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "pdf.preview",
+          "when": "false"
+        },
+        {
+          "command": "word.preview",
+          "when": "false"
+        }
+      ]
+    },
     "customEditors": [
       {
         "viewType": "dx-pdf-editor",
-        "displayName": "dx PDF Viewer",
+        "displayName": "PDF Editor",
         "priority": "default",
         "selector": [
           {
@@ -59,7 +151,7 @@
       },
       {
         "viewType": "dx-docx-editor",
-        "displayName": "dx Word Viewer",
+        "displayName": "Word Editor",
         "priority": "default",
         "selector": [
           {
@@ -69,7 +161,7 @@
       },
       {
         "viewType": "dx-doc-editor",
-        "displayName": "dx Word 97-2003 Viewer",
+        "displayName": "Word 97-2003 Viewer",
         "priority": "default",
         "selector": [
           {
@@ -82,7 +174,7 @@
   "scripts": {
     "vscode:prepublish": "npm run vendor && webpack --mode production",
     "compile": "npm run vendor && webpack --mode none",
-    "watch": "webpack --mode none --watch",
+    "watch": "npm run vendor && webpack --mode none --watch",
     "vendor": "node scripts/vendor.js",
     "package": "vsce package --no-dependencies -o dx.vsix",
     "test": "node --test test/*.test.js",
@@ -91,7 +183,8 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
-    "test:e2e": "npm run compile && node test/e2e/run.js"
+    "test:e2e": "npm run compile && node test/e2e/run.js",
+    "parity": "node scripts/parity.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
