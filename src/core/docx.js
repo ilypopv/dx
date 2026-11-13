@@ -555,6 +555,10 @@ function bulletText(text, font) {
     if (c === 0xf0fc) {
         return '✓';
     }
+    // The minus of the Symbol font: Word's dash bullet.
+    if (c === 0xf02d) {
+        return '–';
+    }
     if ((c >= 0xf000 && c <= 0xf0ff) || (font === 'Symbol' && text === '·')) {
         return '•';
     }
@@ -752,8 +756,9 @@ class BodyReader {
             // Only a manual page break: Word ends the page with it and shows nothing of the paragraph after it.
             block.pageBreakOnly = true;
         }
-        if (!block.runs.length) {
-            // An empty paragraph is as tall as its paragraph mark says (title pages are spaced with them).
+        if (!block.runs.some(r => r.text)) {
+            // An empty paragraph is as tall as its paragraph mark says (title pages are spaced with them); so is
+            // what line spacing adds below a picture alone in its paragraph.
             const mark = merge(baseRun, runProps(child(pPr, 'w:rPr'), ctx.theme));
             if (mark.size) {
                 block.markSize = mark.size;

@@ -382,6 +382,7 @@ body {
     height: auto !important;
     line-height: inherit !important;
     padding-left: 0 !important;
+    margin-left: 0 !important;
     word-spacing: normal !important;
     white-space: pre-wrap;
 }

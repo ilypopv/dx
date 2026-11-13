@@ -385,8 +385,11 @@ export class Renderer {
                 ls.wordSpacing = pt(free / l.spaces);
             }
             const indent = l.offset - left + Math.max(0, shift);
-            if (indent) {
+            if (indent > 0) {
                 ls.paddingLeft = pt(indent);
+            } else if (indent < 0) {
+                // A hanging first line starts left of the paragraph's indent.
+                ls.marginLeft = pt(indent);
             }
             if (k === 0 && block.list) {
                 ln.appendChild(this.marker(block));

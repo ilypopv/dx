@@ -395,3 +395,21 @@ test('East Asian layout and the default tab stop come from the settings', () => 
     assert.equal(model.tabStop, 35.4);
     assert.equal(readDocx(makeDocx({ body: p('x') })).model.feLayout, false);
 });
+
+test('the minus of the Symbol font is a dash bullet', () => {
+    assert.equal(bulletText('\uf02d', 'Symbol'), '–');
+    assert.equal(bulletText('\uf0b7', 'Symbol'), '•');
+});
+
+test('a paragraph with only a picture keeps the font of its paragraph mark (line spacing below the picture)', () => {
+    const rel = `<Relationship Id="rIdImg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>`;
+    const picture =
+        '<w:r><w:drawing><wp:inline><wp:extent cx="1270000" cy="635000"/><a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="rIdImg"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+    const styles =
+        '<w:style w:type="paragraph" w:styleId="Fig"><w:rPr><w:rFonts w:ascii="Times New Roman"/><w:sz w:val="28"/></w:rPr></w:style>';
+    const body = `<w:p><w:pPr><w:pStyle w:val="Fig"/></w:pPr>${picture}</w:p><w:p><w:pPr><w:pStyle w:val="Fig"/></w:pPr><w:r><w:t>text</w:t></w:r></w:p>`;
+    const [fig, text] = readDocx(makeDocx({ body, styles, rels: [rel] })).model.blocks;
+    assert.equal(fig.markFont, 'Times New Roman');
+    assert.equal(fig.markSize, 14);
+    assert.equal(text.markFont, undefined, 'a paragraph with text takes its lines from the text');
+});
