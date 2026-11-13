@@ -3,7 +3,8 @@
 // Compares the pages of dx's layout engine with Word's: node scripts/parity.js <file.docx> <file.pdf> [-v]
 // The PDF is the document exported by Word (File > Save As > PDF); the check finds where every page of the PDF
 // starts in the text of the document and compares it with where the engine starts its pages. The engine measures
-// with the font files of the system (and the ones Word ships), as the webview measures with the same fonts.
+// with the font files installed on the system, as the webview does: the fonts that only Word ships are not there,
+// a missing font falls back to Times or Helvetica like the browser's serif and sans-serif.
 const fs = require('fs');
 const path = require('path');
 const { readFont } = require('./ttf');
@@ -22,7 +23,6 @@ const FONT_DIRS = [
     '/System/Library/Fonts',
     '/Library/Fonts',
     path.join(require('os').homedir(), 'Library/Fonts'),
-    '/Applications/Microsoft Word.app/Contents/Resources/DFonts',
     'C:/Windows/Fonts',
     '/usr/share/fonts/truetype/msttcorefonts'
 ];
@@ -48,7 +48,14 @@ function fontOf(font) {
     const key = family + style;
     if (!fonts.has(key)) {
         const candidates = [family + style, family.replace(/ /g, '') + style.replace(/ /g, ''), family];
-        const found = candidates.map(c => fontFiles.get(c)).find(Boolean) || fontFiles.get('times new roman');
+        // The browser's fallback for a family it does not have (the generic family of fontStack in the webview).
+        const generic = /times|georgia|cambria|garamond|serif|book|minion|palatino/i.test(family)
+            ? 'times'
+            : 'helvetica';
+        const found =
+            candidates.map(c => fontFiles.get(c)).find(Boolean) ||
+            fontFiles.get(generic) ||
+            fontFiles.get('times new roman');
         fonts.set(key, readFont(found));
     }
     return fonts.get(key);
