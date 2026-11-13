@@ -28,6 +28,24 @@ export interface Measure {
 }
 
 const SIZE = 100;
+// The probe for the height of a line is big: the browser rounds ascent, descent and line gap to whole pixels (of the
+// size on the screen), which at 100px (and a zoom other than 100%) is an error of up to half a percent per line.
+const PROBE_SIZE = 1000;
+
+// Ascent (with the line gap above the text), descent and units per em of the fonts Word documents mostly use,
+// from the font files themselves: Word lays lines out with these numbers whatever the browser draws.
+const FONT_LINES: { [family: string]: [number, number, number] } = {
+    'times new roman': [1912, 443, 2048],
+    arial: [1921, 434, 2048],
+    calibri: [1950, 550, 2048],
+    cambria: [1946, 455, 2048],
+    'courier new': [1705, 615, 2048],
+    aptos: [1923, 577, 2048],
+    georgia: [1878, 449, 2048],
+    verdana: [2059, 430, 2048],
+    tahoma: [2049, 423, 2048],
+    'trebuchet ms': [1923, 455, 2048]
+};
 
 function css(font: Font): string {
     return `${font.i ? 'italic ' : ''}${font.b ? 'bold ' : ''}${SIZE}px ${fontStack(font.family) || DEFAULT_STACK}`;
@@ -50,9 +68,9 @@ export function lineRatio(stack: string, bold = false, italic = false): number {
         document.body.appendChild(probe);
     }
     const span = probe.firstChild as HTMLElement;
-    span.style.cssText = `display:inline-block;font:${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${SIZE}px ${stack};line-height:normal`;
+    span.style.cssText = `display:inline-block;font:${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${PROBE_SIZE}px ${stack};line-height:normal`;
     span.textContent = 'Hg';
-    const ratio = span.getBoundingClientRect().height / SIZE;
+    const ratio = span.getBoundingClientRect().height / PROBE_SIZE;
     const value = ratio > 0.5 && ratio < 3 ? ratio : 1.15;
     ratios.set(key, value);
     return value;
@@ -90,12 +108,21 @@ export function createMeasure(): Measure {
             const key = css(font);
             let m = lines.get(key);
             if (!m) {
-                use(font);
-                const box = ctx.measureText('Hg');
-                const natural = lineRatio(fontStack(font.family) || DEFAULT_STACK, !!font.b, !!font.i);
-                const descent = (box.fontBoundingBoxDescent || 0.216 * SIZE) / SIZE;
-                // The line gap sits above the text, in the ascent.
-                m = { ascent: natural - descent, descent, natural };
+                const known = FONT_LINES[font.family.toLowerCase()];
+                if (known) {
+                    m = {
+                        ascent: known[0] / known[2],
+                        descent: known[1] / known[2],
+                        natural: (known[0] + known[1]) / known[2]
+                    };
+                } else {
+                    use(font);
+                    const box = ctx.measureText('Hg');
+                    const natural = lineRatio(fontStack(font.family) || DEFAULT_STACK, !!font.b, !!font.i);
+                    const descent = (box.fontBoundingBoxDescent || 0.216 * SIZE) / SIZE;
+                    // The line gap sits above the text, in the ascent.
+                    m = { ascent: natural - descent, descent, natural };
+                }
                 lines.set(key, m);
             }
             return { ascent: m.ascent * font.size, descent: m.descent * font.size, natural: m.natural * font.size };
